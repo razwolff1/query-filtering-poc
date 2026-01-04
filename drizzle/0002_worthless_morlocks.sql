@@ -1,0 +1,1 @@
+CREATE INDEX "single_history_id_index" ON "single_history" USING btree ("id");

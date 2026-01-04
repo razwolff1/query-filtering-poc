@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:18.1
+    container_name: postgres-benchmark
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: benchmark
+      POSTGRES_USER: newuser
+      POSTGRES_PASSWORD: 123
