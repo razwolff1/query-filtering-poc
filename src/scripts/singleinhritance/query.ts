@@ -1,10 +1,5 @@
 import * as schemas from "./schema.js";
-import {
-  computeAppliedCoreFilter,
-  extractCoreFilters,
-  getBaseQuery,
-  getQuery,
-} from "./utils.js";
+import { computeAppliedCoreFilter, extractCoreFilters, getBaseQuery, getQuery } from "./utils.js";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { childSchema, Filters } from "./zodSchema.js";
 
@@ -29,16 +24,9 @@ export const queryOrders = async ({
     entityId: filterEntityIds,
   } = extractCoreFilters(filters);
 
-  const appliedStepIds = filterStepIds
-    ? computeAppliedCoreFilter(filterStepIds, stepIds)
-    : stepIds;
+  const appliedStepIds = filterStepIds ? computeAppliedCoreFilter(filterStepIds, stepIds) : stepIds;
 
-  const { baseQuery, types } = await getBaseQuery(
-    db,
-    appliedStepIds,
-    filterEntityTypes,
-    lastId
-  );
+  const { baseQuery, types } = await getBaseQuery(db, appliedStepIds, filterEntityTypes, lastId);
 
   if (!baseQuery || !types.length) return [];
 

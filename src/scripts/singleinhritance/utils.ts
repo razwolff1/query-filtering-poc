@@ -1,10 +1,3 @@
-import * as schemas from "./schema.js";
-import {
-  ChildrenTypesWithCore,
-  TChildrenTypes,
-} from "./types.js";
-import { core, ZodDiscriminatedUnion, ZodObject } from "zod";
-import { childSchema, Filter, FilterGroup, FilterOperators, Filters, filtersSchema, TChildSchema } from "./zodSchema.js";
 import {
   and,
   eq,
@@ -21,12 +14,22 @@ import {
   notIlike,
   notInArray,
   or,
+  type SQL,
   sql,
-  SQL,
   WithSubquery,
 } from "drizzle-orm";
-import { PgTableWithColumns, WithSubqueryWithSelection } from "drizzle-orm/pg-core";
-import { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgTableWithColumns, WithSubqueryWithSelection } from "drizzle-orm/pg-core";
+import { ZodDiscriminatedUnion, ZodObject } from "zod";
+import * as schemas from "./schema.js";
+import type { ChildrenTypesWithCore, TChildrenTypes } from "./types.js";
+import {
+  childSchema,
+  type Filter,
+  type FilterGroup,
+  type FilterOperators,
+  type Filters,
+} from "./zodSchema.js";
 
 // TODO: restrict recursive depth
 
@@ -41,10 +44,10 @@ export const childrenTypesToTables = {
   child_8: schemas.child8,
   child_9: schemas.child9,
   child_10: schemas.child10,
-}
+};
 
-const coreProperties = ['entityId', 'entityType', 'stepId'] as const
-type CoreProperty = typeof coreProperties[number]
+const coreProperties = ["entityId", "entityType", "stepId"] as const;
+type CoreProperty = (typeof coreProperties)[number];
 
 export const stepIds: string[] = [
   "019ae8a8-a58b-75ef-8672-6d87fa458cf6",
@@ -69,7 +72,7 @@ export const typesPriority: TChildrenTypes[] = [
 
 const getSchemaByDiscriminatorValue = (
   schema: ZodDiscriminatedUnion,
-  value: TChildrenTypes
+  value: TChildrenTypes,
 ): ZodObject => {
   for (const option of schema.options) {
     if (option instanceof ZodObject) {
@@ -90,38 +93,33 @@ const getSchemaByDiscriminatorValue = (
 export const generateFieldsToTypes = (types: TChildrenTypes[]) => {
   const typesToFields: Partial<Record<ChildrenTypesWithCore, string[] | readonly string[]>> = {};
 
-  typesToFields['core'] = coreProperties
+  typesToFields.core = coreProperties;
 
   types.forEach((type) => {
     const schema = getSchemaByDiscriminatorValue(childSchema, type);
-    const fields = flattenSchema(schema, [
-      "id",
-      "type",
-    ]);
+    const fields = flattenSchema(schema, ["id", "type"]);
     typesToFields[type] = fields;
   });
 
-  const fieldsToTypes = Object.entries(typesToFields).reduce<
-    Record<string, TChildrenTypes[]>
-  >((acc, [type, fields]) => {
-    fields.forEach((field) => {
-      if (!acc[field]) {
-        acc[field] = [];
-      }
-      acc[field].push(type as TChildrenTypes);
-    });
-    return acc;
-  }, {});
+  const fieldsToTypes = Object.entries(typesToFields).reduce<Record<string, TChildrenTypes[]>>(
+    (acc, [type, fields]) => {
+      fields.forEach((field) => {
+        if (!acc[field]) {
+          acc[field] = [];
+        }
+        acc[field].push(type as TChildrenTypes);
+      });
+      return acc;
+    },
+    {},
+  );
 
   return fieldsToTypes;
 };
 
-const flattenSchema = (
-  schema: ZodObject | ZodDiscriminatedUnion,
-  ignoreFields?: string[]
-) => {
+const flattenSchema = (schema: ZodObject | ZodDiscriminatedUnion, ignoreFields?: string[]) => {
   const result: string[] = [];
-
+  childSchema.options;
   if (schema instanceof ZodDiscriminatedUnion) {
     childSchema.options.reduce<ZodDiscriminatedUnion["options"][0]>(
       (acc, curr) => {
@@ -131,7 +129,7 @@ const flattenSchema = (
 
         return acc;
       },
-      {} as ZodDiscriminatedUnion["options"][0]
+      {} as ZodDiscriminatedUnion["options"][0],
     );
   } else {
     Object.entries(schema.shape).forEach(([fieldName, fieldValue]) => {
@@ -145,7 +143,7 @@ const flattenSchema = (
 
             return acc;
           },
-          {} as ZodDiscriminatedUnion["options"][0]
+          {} as ZodDiscriminatedUnion["options"][0],
         );
       } else {
         if (!ignoreFields || !ignoreFields.includes(fieldName)) {
@@ -158,17 +156,10 @@ const flattenSchema = (
   return result;
 };
 
-type Table = PgTableWithColumns<any> | WithSubqueryWithSelection<any, any>
-type FilterBuilder = (
-  table: Table,
-  column: string,
-  value?: any
-) => SQL | undefined;
+type Table = PgTableWithColumns<any> | WithSubqueryWithSelection<any, any>;
+type FilterBuilder = (table: Table, column: string, value?: any) => SQL | undefined;
 
-const filterBuilders: Record<
-  FilterOperators,
-  FilterBuilder
-> = {
+const filterBuilders: Record<FilterOperators, FilterBuilder> = {
   ne: (table, column, value) => {
     return ne(table[column], value);
   },
@@ -200,10 +191,10 @@ const filterBuilders: Record<
     return lte(table[column], value);
   },
   in: (table, column, value) => {
-    return inArray(table[column], value)
+    return inArray(table[column], value);
   },
   nin: (table, column, value) => {
-    return notInArray(table[column], value)
+    return notInArray(table[column], value);
   },
   isExists: (table, column) => {
     return isNotNull(table[column]);
@@ -214,20 +205,16 @@ const filterBuilders: Record<
 };
 
 const isFieldPartOfTable = (table: Table, field: string) => {
-  if(table instanceof WithSubquery){
-    return field in table._.selectedFields
+  if (table instanceof WithSubquery) {
+    return field in table._.selectedFields;
   }
 
-  return field in table
-}
+  return field in table;
+};
 
-const buildFieldCondition = (
-  table: Table,
-  field: string,
-  filter: Filter
-) => {
-  if(!filter) return undefined
-  
+const buildFieldCondition = (table: Table, field: string, filter: Filter) => {
+  if (!filter) return undefined;
+
   const builder = filterBuilders[filter.operator];
 
   if (!builder || !isFieldPartOfTable(table, field)) return undefined;
@@ -239,7 +226,7 @@ const buildFilterGroupCondition = (
   group: FilterGroup,
   table: Table,
   coreTable: Table,
-  parentKey: 'and' | 'or'
+  parentKey: "and" | "or",
 ): SQL | undefined => {
   const conditions: (SQL | undefined)[] = [];
 
@@ -247,25 +234,22 @@ const buildFilterGroupCondition = (
     if (key === "and" || key === "or") continue;
     if (!filter || Array.isArray(filter)) continue;
 
-    let tableToFilter = table
-    if(coreProperties.includes(key as CoreProperty)){
-      tableToFilter = coreTable
+    let tableToFilter = table;
+    if (coreProperties.includes(key as CoreProperty)) {
+      tableToFilter = coreTable;
     }
 
-    const condition = buildFieldCondition(
-      tableToFilter,
-      key,
-      filter
-    );
+    const condition = buildFieldCondition(tableToFilter, key, filter);
 
     conditions.push(condition);
   }
 
   if (group.and) {
-    const nested = group.and
-      .map((groupFilter) => buildFilterGroupCondition(groupFilter, table, coreTable, 'and'))
+    const nested = group.and.map((groupFilter) =>
+      buildFilterGroupCondition(groupFilter, table, coreTable, "and"),
+    );
 
-    const condition = nested.length ? and(...nested) :  undefined
+    const condition = nested.length ? and(...nested) : undefined;
 
     if (condition) {
       conditions.push(condition);
@@ -273,10 +257,11 @@ const buildFilterGroupCondition = (
   }
 
   if (group.or) {
-    const nested = group.or
-      .map((groupFilter) => buildFilterGroupCondition(groupFilter, table, coreTable, 'or'))
+    const nested = group.or.map((groupFilter) =>
+      buildFilterGroupCondition(groupFilter, table, coreTable, "or"),
+    );
 
-    const condition = nested.length ? or(...nested) :  undefined
+    const condition = nested.length ? or(...nested) : undefined;
     if (condition) {
       conditions.push(condition);
     }
@@ -286,64 +271,69 @@ const buildFilterGroupCondition = (
     return undefined;
   }
 
-  if(parentKey === 'and' && conditions.some(filter => typeof filter === 'undefined')) return undefined
+  if (parentKey === "and" && conditions.some((filter) => typeof filter === "undefined"))
+    return undefined;
 
-  return conditions.length === 1
-    ? conditions[0]
-    : and(...conditions);
+  return conditions.length === 1 ? conditions[0] : and(...conditions);
 };
-
-
 
 const buildWhereFromFilters = (
   filters: Filters | undefined,
   table: Table,
-  coreTable: Table
+  coreTable: Table,
 ): SQL | undefined => {
   if (!filters) return undefined;
 
   if ("and" in filters) {
-    const conditions = filters.and
-      .map((group) => buildFilterGroupCondition(group, table, coreTable, 'and'))
+    const conditions = filters.and.map((group) =>
+      buildFilterGroupCondition(group, table, coreTable, "and"),
+    );
 
-    return conditions.length && conditions.every(condition => typeof condition !== 'undefined') ? and(...conditions) : undefined;
+    return conditions.length && conditions.every((condition) => typeof condition !== "undefined")
+      ? and(...conditions)
+      : undefined;
   }
 
   if ("or" in filters) {
-    const conditions = filters.or
-      .map((group) => buildFilterGroupCondition(group, table, coreTable, 'or'))
+    const conditions = filters.or.map((group) =>
+      buildFilterGroupCondition(group, table, coreTable, "or"),
+    );
 
-    return conditions.length && conditions.some(condition => typeof condition !== 'undefined') ? or(...conditions) : undefined;
+    return conditions.length && conditions.some((condition) => typeof condition !== "undefined")
+      ? or(...conditions)
+      : undefined;
   }
 
   return undefined;
 };
 
-
 type WhereConditions = Partial<{
-  [K in keyof typeof childrenTypesToTables]: SQL | undefined
-}>
+  [K in keyof typeof childrenTypesToTables]: SQL | undefined;
+}>;
 
-export const buildFilters = (filters: Filters | undefined, types: TChildrenTypes[], coreTable: Table) => {
-  const whereConditions: WhereConditions = {}
+export const buildFilters = (
+  filters: Filters | undefined,
+  types: TChildrenTypes[],
+  coreTable: Table,
+) => {
+  const whereConditions: WhereConditions = {};
 
-  if(!filters) return {}
+  if (!filters) return {};
 
-  for(const type of types){
-    const typeTable = childrenTypesToTables[type]
-      whereConditions[type] = buildWhereFromFilters(filters, typeTable, coreTable)
+  for (const type of types) {
+    const typeTable = childrenTypesToTables[type];
+    whereConditions[type] = buildWhereFromFilters(filters, typeTable, coreTable);
   }
 
-  return whereConditions
-}
+  return whereConditions;
+};
 
 type CoreConstraint = {
   include?: Set<any>;
   exclude?: Set<any>;
 };
 
-type CoreConstraints = Partial<Record<typeof coreProperties[number], CoreConstraint>>;
-
+type CoreConstraints = Partial<Record<(typeof coreProperties)[number], CoreConstraint>>;
 
 const mergeAnd = (a?: CoreConstraint, b?: CoreConstraint): CoreConstraint | undefined => {
   if (!a) return b;
@@ -352,7 +342,7 @@ const mergeAnd = (a?: CoreConstraint, b?: CoreConstraint): CoreConstraint | unde
   const include =
     a.include && b.include
       ? new Set([...a.include].filter((v) => b.include!.has(v)))
-      : a.include ?? b.include;
+      : (a.include ?? b.include);
 
   const exclude = new Set([...(a.exclude ?? []), ...(b.exclude ?? [])]);
 
@@ -362,19 +352,13 @@ const mergeAnd = (a?: CoreConstraint, b?: CoreConstraint): CoreConstraint | unde
 const mergeOr = (a?: CoreConstraint, b?: CoreConstraint): CoreConstraint | undefined => {
   if (!a || !b) return undefined;
 
-  const include =
-    a.include && b.include
-      ? new Set([...a.include, ...b.include])
-      : undefined;
+  const include = a.include && b.include ? new Set([...a.include, ...b.include]) : undefined;
 
   const exclude =
-    a.exclude && b.exclude
-      ? new Set([...a.exclude].filter((v) => b.exclude!.has(v)))
-      : undefined;
+    a.exclude && b.exclude ? new Set([...a.exclude].filter((v) => b.exclude?.has(v))) : undefined;
 
   return { include, exclude };
 };
-
 
 const extractFromField = (filter: Filter): CoreConstraint | undefined => {
   switch (filter?.operator) {
@@ -395,10 +379,7 @@ const extractFromField = (filter: Filter): CoreConstraint | undefined => {
   }
 };
 
-
-const extractCoreFromGroup = (
-  group: FilterGroup,
-): CoreConstraints | undefined => {
+const extractCoreFromGroup = (group: FilterGroup): CoreConstraints | undefined => {
   let result: CoreConstraints = {};
 
   for (const [key, value] of Object.entries(group)) {
@@ -406,15 +387,15 @@ const extractCoreFromGroup = (
     if (!value || Array.isArray(value)) continue;
     if (!coreProperties.includes(key as CoreProperty)) continue;
 
-    const coreKey = key as CoreProperty
+    const coreKey = key as CoreProperty;
 
     const constraint = extractFromField(value);
     if (!constraint) return undefined;
 
-    const merged = mergeAnd(result[coreKey], constraint)
+    const merged = mergeAnd(result[coreKey], constraint);
 
-    if(merged){
-      result[coreKey] = merged
+    if (merged) {
+      result[coreKey] = merged;
     }
   }
 
@@ -424,11 +405,11 @@ const extractCoreFromGroup = (
       if (!nested) return undefined;
 
       for (const key of Object.keys(nested)) {
-          const coreKey = key as CoreProperty
+        const coreKey = key as CoreProperty;
 
         const merged = mergeAnd(result[coreKey], nested[coreKey]);
-        if(merged){
-          result[coreKey] = merged
+        if (merged) {
+          result[coreKey] = merged;
         }
       }
     }
@@ -440,16 +421,16 @@ const extractCoreFromGroup = (
     for (const g of group.or) {
       const nested = extractCoreFromGroup(g);
       if (!nested) continue;
-      
+
       if (!orResult) {
         orResult = nested;
       } else {
         for (const key of Object.keys(orResult)) {
-          const coreKey = key as CoreProperty
+          const coreKey = key as CoreProperty;
 
           const merged = mergeOr(orResult[coreKey], nested[coreKey]);
-          if(merged){
-            orResult[coreKey] = merged
+          if (merged) {
+            orResult[coreKey] = merged;
           }
         }
       }
@@ -462,13 +443,10 @@ const extractCoreFromGroup = (
   return result;
 };
 
-
-export const extractCoreFilters = (
-  filters: Filters | undefined,
-): CoreConstraints => {
+export const extractCoreFilters = (filters: Filters | undefined): CoreConstraints => {
   let constraints: CoreConstraints | undefined;
 
-  if(!filters) return {}
+  if (!filters) return {};
 
   if ("and" in filters) {
     constraints = {};
@@ -477,11 +455,10 @@ export const extractCoreFilters = (
       if (!res) return {};
 
       for (const key of Object.keys(res)) {
-        const coreKey = key as CoreProperty
+        const coreKey = key as CoreProperty;
 
         const merged = mergeAnd(constraints[coreKey], res[coreKey]);
-        if(merged)
-        constraints[coreKey] = merged
+        if (merged) constraints[coreKey] = merged;
       }
     }
   }
@@ -494,17 +471,14 @@ export const extractCoreFilters = (
       constraints = constraints
         ? Object.fromEntries(
             Object.entries(constraints).map(([key, constraint]) => {
-              const coreKey = key as CoreProperty
+              const coreKey = key as CoreProperty;
 
-              const merged = mergeOr(constraint, res[coreKey])
-              
-              if(!merged) return [coreKey, {}]
+              const merged = mergeOr(constraint, res[coreKey]);
 
-              return [
-              coreKey,
-              merged
-            ]
-            })
+              if (!merged) return [coreKey, {}];
+
+              return [coreKey, merged];
+            }),
           )
         : res;
     }
@@ -512,70 +486,79 @@ export const extractCoreFilters = (
 
   if (!constraints) return {};
 
-  return constraints
+  return constraints;
 };
 
 export const computeAppliedCoreFilter = <T>(constraint: CoreConstraint, array: T[]) => {
-  const {include, exclude} = constraint
-  if(include?.size && !exclude?.size){
-    return array.filter(element => include.has(element))
+  const { include, exclude } = constraint;
+  if (include?.size && !exclude?.size) {
+    return array.filter((element) => include.has(element));
   }
 
-  if(!include?.size && exclude?.size){
-    return array.filter(element => !exclude?.has(element))
+  if (!include?.size && exclude?.size) {
+    return array.filter((element) => !exclude?.has(element));
   }
 
-  return array
-}
+  return array;
+};
 
-export const getRelevantTypes = (types: TChildrenTypes[], whereConditions: WhereConditions, filters?: Filters) => {
-  if(Object.values(whereConditions).every(condition => typeof condition === 'undefined')){
-    return filters && Object.keys(filters).length ? [] : types
+export const getRelevantTypes = (
+  types: TChildrenTypes[],
+  whereConditions: WhereConditions,
+  filters?: Filters,
+) => {
+  if (Object.values(whereConditions).every((condition) => typeof condition === "undefined")) {
+    return filters && Object.keys(filters).length ? [] : types;
   }
 
-  return types.filter(type => typeof whereConditions[type] !== 'undefined')
-}
+  return types.filter((type) => typeof whereConditions[type] !== "undefined");
+};
 
-export const getBaseQuery = async (db: NodePgDatabase<typeof schemas>, stepIds: string[], filterEntityTypes?: CoreConstraint, lastId?: string) => {
+export const getBaseQuery = async (
+  db: NodePgDatabase<typeof schemas>,
+  stepIds: string[],
+  filterEntityTypes?: CoreConstraint,
+  lastId?: string,
+) => {
+  const orderHistory = await db
+    .selectDistinct({ type: schemas.stepsToTypes.type })
+    .from(schemas.stepsToTypes)
+    .where(inArray(schemas.stepsToTypes.stepId, stepIds));
 
-    const orderHistory = await db
-      .selectDistinct({ type: schemas.stepsToTypes.type })
-      .from(schemas.stepsToTypes)
-      .where(inArray(schemas.stepsToTypes.stepId, stepIds));
-  
-    const permittedTypes = orderHistory.map((r) => r.type);
-    const appliedTypes = filterEntityTypes
-      ? computeAppliedCoreFilter(filterEntityTypes, permittedTypes)
-      : permittedTypes;
-  
-    const orderedPermittedTypes = appliedTypes.sort(
-      (a, b) => typesPriority.indexOf(a) - typesPriority.indexOf(b)
-    );
-  
-    if (orderedPermittedTypes.length === 0) return {types: [], baseQuery: undefined};
-  
-    const baseQuery = db.$with("ordered_history").as(
-      db
-        .select()
-        .from(schemas.historySchema)
-        .where(
-          and(
-            lastId ? gt(schemas.historySchema.id, lastId) : sql`TRUE`,
-            inArray(schemas.historySchema.stepId, stepIds)
-          )
-        )
-        .orderBy(schemas.historySchema.id)
-    );
+  const permittedTypes = orderHistory.map((r) => r.type);
+  const appliedTypes = filterEntityTypes
+    ? computeAppliedCoreFilter(filterEntityTypes, permittedTypes)
+    : permittedTypes;
 
-    return {types: orderedPermittedTypes, baseQuery}
-}
-
-export const getQuery = (db: NodePgDatabase<typeof schemas>, baseQuery: WithSubqueryWithSelection<any, any>, types: TChildrenTypes[], filters?: Filters) => {
-  const whereConditions = buildFilters(
-    filters,
-    types,
-    baseQuery
+  const orderedPermittedTypes = appliedTypes.sort(
+    (a, b) => typesPriority.indexOf(a) - typesPriority.indexOf(b),
   );
+
+  if (orderedPermittedTypes.length === 0) return { types: [], baseQuery: undefined };
+
+  const baseQuery = db.$with("ordered_history").as(
+    db
+      .select()
+      .from(schemas.historySchema)
+      .where(
+        and(
+          lastId ? gt(schemas.historySchema.id, lastId) : sql`TRUE`,
+          inArray(schemas.historySchema.stepId, stepIds),
+        ),
+      )
+      .orderBy(schemas.historySchema.id),
+  );
+
+  return { types: orderedPermittedTypes, baseQuery };
+};
+
+export const getQuery = (
+  db: NodePgDatabase<typeof schemas>,
+  baseQuery: WithSubqueryWithSelection<any, any>,
+  types: TChildrenTypes[],
+  filters?: Filters,
+) => {
+  const whereConditions = buildFilters(filters, types, baseQuery);
   const relevantTypes = getRelevantTypes(types, whereConditions, filters);
   if (!relevantTypes.length) return undefined;
 
@@ -589,7 +572,7 @@ export const getQuery = (db: NodePgDatabase<typeof schemas>, baseQuery: WithSubq
           THEN to_json(${table}.*)
         `;
       }),
-      sql` `
+      sql` `,
     )}
   END
 `;
@@ -614,8 +597,8 @@ export const getQuery = (db: NodePgDatabase<typeof schemas>, baseQuery: WithSubq
       and(
         eq(table.id, baseQuery.entityId),
         eq(baseQuery.entityType, type),
-        whereConditions[type] ?? sql`TRUE`
-      )
+        whereConditions[type] ?? sql`TRUE`,
+      ),
     );
   }
 
@@ -624,9 +607,9 @@ export const getQuery = (db: NodePgDatabase<typeof schemas>, baseQuery: WithSubq
       ...relevantTypes.map((type) => {
         const table = childrenTypesToTables[type];
         return isNotNull(table.id);
-      })
-    )
+      }),
+    ),
   );
 
-  return query
-}
+  return query;
+};

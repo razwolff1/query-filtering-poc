@@ -1,8 +1,5 @@
-import { createSelectSchema } from "drizzle-zod";
-import { boolean, z } from "zod";
-import { historySchema } from "./schema.js";
+import { z } from "zod";
 import { childrenTypes } from "./types.js";
-import { childrenTypesToTables } from "./utils.js";
 
 const child1 = z.object({
   id: z.uuid(),
@@ -140,12 +137,7 @@ const child10 = z.object({
   platform: z.literal("mobile"),
 });
 
-const multiChildSchema = z.discriminatedUnion("subType", [
-  child7,
-  child8,
-  child9,
-  child10,
-]);
+const multiChildSchema = z.discriminatedUnion("subType", [child7, child8, child9, child10]);
 
 export const childSchema = z.discriminatedUnion("type", [
   child1,
@@ -167,7 +159,7 @@ const fieldSchemaByType = {
   number: z.number(),
   uuid: z.uuidv7(),
   boolean: z.boolean(),
-  entityType: z.enum(childrenTypes)
+  entityType: z.enum(childrenTypes),
 } as const;
 
 const possibleOperatorsByFieldType = {
@@ -181,17 +173,16 @@ const possibleOperatorsByFieldType = {
 
 const arrayOperatorsSchema = z.enum(["in", "nin"]);
 
-type FieldOperator =
-  z.infer<
-    (typeof possibleOperatorsByFieldType)[keyof typeof possibleOperatorsByFieldType]
-  >;
+type FieldOperator = z.infer<
+  (typeof possibleOperatorsByFieldType)[keyof typeof possibleOperatorsByFieldType]
+>;
 
 type ArrayOperator = z.infer<typeof arrayOperatorsSchema>;
 
 export type FilterOperators = FieldOperator | ArrayOperator;
 
 const getFilterSchema = (fieldType: FieldType) => {
-  let fieldSchema = fieldSchemaByType[fieldType];
+  const fieldSchema = fieldSchemaByType[fieldType];
   const possibleOperators = possibleOperatorsByFieldType[fieldType];
 
   const arraySchema = z.object({
@@ -204,12 +195,10 @@ const getFilterSchema = (fieldType: FieldType) => {
     operator: possibleOperators,
   });
 
-  return z
-    .discriminatedUnion("operator", [arraySchema, singleValueSchema])
-    .optional();
+  return z.discriminatedUnion("operator", [arraySchema, singleValueSchema]).optional();
 };
 
-export type Filter = z.infer<ReturnType<typeof getFilterSchema>>
+export type Filter = z.infer<ReturnType<typeof getFilterSchema>>;
 
 const filterGroupSchema = z.object({
   get and() {
@@ -221,12 +210,12 @@ const filterGroupSchema = z.object({
   entityId: getFilterSchema("uuid"),
   name: getFilterSchema("string"),
   description: getFilterSchema("string"),
-  age: getFilterSchema('number'),
-  verified: getFilterSchema('boolean'),
-  lastLogin: getFilterSchema('date'),
-  stepId: getFilterSchema('uuid'),
-  heightCm: getFilterSchema('number'),
-  nonExist: getFilterSchema('number')
+  age: getFilterSchema("number"),
+  verified: getFilterSchema("boolean"),
+  lastLogin: getFilterSchema("date"),
+  stepId: getFilterSchema("uuid"),
+  heightCm: getFilterSchema("number"),
+  nonExist: getFilterSchema("number"),
 });
 
 export const filtersSchema = z.union([
@@ -234,5 +223,5 @@ export const filtersSchema = z.union([
   z.object({ or: z.array(filterGroupSchema) }),
 ]);
 
-export type FilterGroup = z.infer<typeof filterGroupSchema>
-export type Filters = z.infer<typeof filtersSchema>
+export type FilterGroup = z.infer<typeof filterGroupSchema>;
+export type Filters = z.infer<typeof filtersSchema>;

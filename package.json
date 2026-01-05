@@ -7,6 +7,8 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "prerun": "npm run build && docker-compose up -d && drizzle-kit generate && drizzle-kit migrate",
+    "migrate": "drizzle-kit generate && drizzle-kit migrate",
+    "studio": "drizzle-kit studio",
     "benchmark": "npm run prerun && node dist/scripts/singleinhritance/index.js"
   },
   "keywords": [],
