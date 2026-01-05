@@ -156,423 +156,166 @@ export const childSchema = z.discriminatedUnion("type", [
 export type TChildSchema = z.infer<typeof childSchema>;
 
 // ============================================================
-// Filter Types by Field Type (Type-Level)
+// Type-Level Filter Definitions
 // ============================================================
 
-type StringFilter =
-  | { operator: "eq" | "ne" | "contains" | "notContains"; value: string }
-  | { operator: "in" | "nin"; value: string[] }
-  | { operator: "isEmpty" | "isNotEmpty" };
-
-type NumberFilter =
-  | { operator: "eq" | "ne" | "gt" | "gte" | "lt" | "lte"; value: number }
-  | { operator: "in" | "nin"; value: number[] }
-  | { operator: "isExists" | "isNotExists" };
-
-type BooleanFilter =
-  | { operator: "eq" | "ne"; value: boolean }
-  | { operator: "isExists" | "isNotExists" };
-
-type DateFilter =
-  | { operator: "eq" | "ne" | "gt" | "gte" | "lt" | "lte"; value: Date }
-  | { operator: "in" | "nin"; value: Date[] }
-  | { operator: "isExists" | "isNotExists" };
-
 /**
- * Enum filter with value narrowed to the actual enum options
+ * Filter type for a single value - infers value type from the schema
  */
-type EnumFilter<T extends string> =
+type FilterForValue<T> =
   | { operator: "eq" | "ne"; value: T }
-  | { operator: "in" | "nin"; value: T[] };
-
-// ============================================================
-// Type-Level Utilities for Zod Introspection (Zod 4 Compatible)
-// ============================================================
-
-/**
- * Get the inferred type from any Zod schema, handling nullable/optional/default
- */
-type InferredType<T> = T extends z.ZodType<infer O> ? NonNullable<O> : never;
+  | { operator: "in" | "nin"; value: T[] }
+  | { operator: "gt" | "gte" | "lt" | "lte"; value: T }
+  | { operator: "contains" | "notContains"; value: T }
+  | { operator: "isEmpty" | "isNotEmpty" | "isExists" | "isNotExists" };
 
 /**
- * Check if a type is a string literal union (for enum-like behavior)
+ * Extract the non-nullable inferred type from a Zod schema
  */
-type IsStringLiteral<T> = T extends string ? (string extends T ? false : true) : false;
+type InferValue<T> = T extends z.ZodType<infer O> ? NonNullable<O> : never;
 
 /**
- * Maps an inferred value type to the appropriate filter type.
- * If the type is a string literal (enum), it uses EnumFilter with narrowed values.
+ * Helper type for Zod object schemas
  */
-type ValueToFilter<T> = T extends boolean
-  ? BooleanFilter
-  : T extends Date
-    ? DateFilter
-    : T extends number
-      ? NumberFilter
-      : T extends string
-        ? IsStringLiteral<T> extends true
-          ? EnumFilter<T>
-          : StringFilter
-        : never;
+type ZodObjectSchema = z.ZodObject<z.core.$ZodLooseShape>;
 
 /**
- * Maps a Zod schema to the appropriate filter type by inferring its value type
+ * Filter group type derived from a Zod object schema
  */
-type ZodTypeToFilter<T> = ValueToFilter<InferredType<T>>;
-
-// ============================================================
-// Filter Group Types (Type-Level)
-// ============================================================
-
-/**
- * Creates a filter group type from a Zod shape.
- * Each field becomes an optional filter with the appropriate type.
- * Includes recursive and/or for nested filter groups.
- */
-type FilterGroupFromShape<T extends z.core.$ZodLooseShape> = {
-  [K in keyof T]?: ZodTypeToFilter<T[K]>;
+type FilterGroupFromSchema<T extends ZodObjectSchema> = {
+  [K in keyof T["shape"]]?: FilterForValue<InferValue<T["shape"][K]>>;
 } & {
-  and?: FilterGroupFromShape<T>[];
-  or?: FilterGroupFromShape<T>[];
+  and?: FilterGroupFromSchema<T>[];
+  or?: FilterGroupFromSchema<T>[];
 };
 
 /**
- * Top-level filters type - must start with either 'and' or 'or'
+ * Top-level filters type - must start with 'and' or 'or'
  */
-type FiltersFromShape<T extends z.core.$ZodLooseShape> =
-  | { and: FilterGroupFromShape<T>[] }
-  | { or: FilterGroupFromShape<T>[] };
+type FiltersFromSchema<T extends ZodObjectSchema> =
+  | { and: FilterGroupFromSchema<T>[] }
+  | { or: FilterGroupFromSchema<T>[] };
 
 // ============================================================
-// Runtime Utilities for Zod Schema Detection
+// Runtime Filter Schema Creator
 // ============================================================
-
-type FieldType = "string" | "number" | "boolean" | "date" | "enum" | "literal";
 
 /**
- * Unwrap nullable, optional, and default wrappers at runtime
+ * Create a filter schema from any value Zod schema.
+ * The value type is automatically inferred from the schema.
  */
-function unwrapZodSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
-  // Check for nullable
-  if ("unwrap" in schema && typeof schema.unwrap === "function") {
-    const def = (schema as any)._zod?.def;
-    if (def?.type === "nullable" || def?.type === "optional") {
-      return unwrapZodSchema(schema.unwrap());
-    }
-  }
+function createFilter<T extends z.ZodType>(valueSchema: T) {
+  // Unwrap to base schema for value validation
+  const baseSchema = unwrapSchema(valueSchema);
 
-  // Check for default
+  return z
+    .union([
+      z.object({ operator: z.literal("eq"), value: baseSchema }),
+      z.object({ operator: z.literal("ne"), value: baseSchema }),
+      z.object({ operator: z.literal("in"), value: z.array(baseSchema) }),
+      z.object({ operator: z.literal("nin"), value: z.array(baseSchema) }),
+      z.object({ operator: z.literal("gt"), value: baseSchema }),
+      z.object({ operator: z.literal("gte"), value: baseSchema }),
+      z.object({ operator: z.literal("lt"), value: baseSchema }),
+      z.object({ operator: z.literal("lte"), value: baseSchema }),
+      z.object({ operator: z.literal("contains"), value: baseSchema }),
+      z.object({ operator: z.literal("notContains"), value: baseSchema }),
+      z.object({ operator: z.literal("isEmpty") }),
+      z.object({ operator: z.literal("isNotEmpty") }),
+      z.object({ operator: z.literal("isExists") }),
+      z.object({ operator: z.literal("isNotExists") }),
+    ])
+    .optional();
+}
+
+/**
+ * Unwrap nullable/optional/default wrappers to get base schema
+ */
+function unwrapSchema(schema: z.ZodType): z.ZodType {
   const def = (schema as any)._zod?.def;
-  if (def?.type === "default" && def?.innerType) {
-    return unwrapZodSchema(def.innerType);
-  }
+  if (!def) return schema;
 
+  if (def.type === "nullable" || def.type === "optional") {
+    return unwrapSchema((schema as any).unwrap());
+  }
+  if (def.type === "default" && def.innerType) {
+    return unwrapSchema(def.innerType);
+  }
   return schema;
 }
 
-/**
- * Detect the field type from a Zod schema at runtime
- */
-function detectFieldType(schema: z.ZodTypeAny): { type: FieldType; meta?: any } | null {
-  const unwrapped = unwrapZodSchema(schema);
-  const def = (unwrapped as any)._zod?.def;
-
-  if (!def) return null;
-
-  switch (def.type) {
-    case "enum":
-      return { type: "enum", meta: { values: def.entries } };
-    case "literal":
-      return { type: "literal", meta: { value: def.value } };
-    case "string":
-      return { type: "string" };
-    case "number":
-      return { type: "number" };
-    case "boolean":
-      return { type: "boolean" };
-    case "date":
-      return { type: "date" };
-    default:
-      return null;
-  }
-}
-
 // ============================================================
-// Runtime Filter Schema Generators
-// ============================================================
-
-const stringNoValueOperators = z.enum(["isEmpty", "isNotEmpty"]);
-const numberArrayOperators = z.enum(["in", "nin"]);
-const numberNoValueOperators = z.enum(["isExists", "isNotExists"]);
-const booleanNoValueOperators = z.enum(["isExists", "isNotExists"]);
-const dateArrayOperators = z.enum(["in", "nin"]);
-const dateNoValueOperators = z.enum(["isExists", "isNotExists"]);
-const enumOperators = z.enum(["eq", "ne"]);
-const enumArrayOperators = z.enum(["in", "nin"]);
-
-/**
- * Create a filter schema for a string field
- */
-function createStringFilterSchema() {
-  return z.union([
-    z.object({
-      operator: z.enum(["eq", "ne", "contains", "notContains"]),
-      value: z.string(),
-    }),
-    z.object({
-      operator: z.enum(["in", "nin"]),
-      value: z.array(z.string()),
-    }),
-    z.object({
-      operator: stringNoValueOperators,
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for a number field
- */
-function createNumberFilterSchema() {
-  return z.union([
-    z.object({
-      operator: z.enum(["eq", "ne", "gt", "gte", "lt", "lte"]),
-      value: z.number(),
-    }),
-    z.object({
-      operator: numberArrayOperators,
-      value: z.array(z.number()),
-    }),
-    z.object({
-      operator: numberNoValueOperators,
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for a boolean field
- */
-function createBooleanFilterSchema() {
-  return z.union([
-    z.object({
-      operator: z.enum(["eq", "ne"]),
-      value: z.boolean(),
-    }),
-    z.object({
-      operator: booleanNoValueOperators,
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for a date field
- */
-function createDateFilterSchema() {
-  return z.union([
-    z.object({
-      operator: z.enum(["eq", "ne", "gt", "gte", "lt", "lte"]),
-      value: z.date(),
-    }),
-    z.object({
-      operator: dateArrayOperators,
-      value: z.array(z.date()),
-    }),
-    z.object({
-      operator: dateNoValueOperators,
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for an enum field
- * The value is restricted to the enum options
- */
-function createEnumFilterSchema<T extends [string, ...string[]]>(enumValues: T) {
-  const enumSchema = z.enum(enumValues);
-  return z.union([
-    z.object({
-      operator: enumOperators,
-      value: enumSchema,
-    }),
-    z.object({
-      operator: enumArrayOperators,
-      value: z.array(enumSchema),
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for a literal field
- * Treats the literal value as a single-option enum
- */
-function createLiteralFilterSchema<T extends string>(literalValue: T) {
-  const literalSchema = z.literal(literalValue);
-  return z.union([
-    z.object({
-      operator: enumOperators,
-      value: literalSchema,
-    }),
-    z.object({
-      operator: enumArrayOperators,
-      value: z.array(literalSchema),
-    }),
-  ]);
-}
-
-/**
- * Create a filter schema for a given Zod schema
- */
-function createFilterSchemaForZodType(schema: z.ZodTypeAny): z.ZodTypeAny | null {
-  const detected = detectFieldType(schema);
-
-  if (!detected) return null;
-
-  switch (detected.type) {
-    case "string":
-      return createStringFilterSchema();
-    case "number":
-      return createNumberFilterSchema();
-    case "boolean":
-      return createBooleanFilterSchema();
-    case "date":
-      return createDateFilterSchema();
-    case "enum":
-      if (detected.meta?.values) {
-        const values = Object.values(detected.meta.values) as [string, ...string[]];
-        return createEnumFilterSchema(values);
-      }
-      return null;
-    case "literal":
-      if (typeof detected.meta?.value === "string") {
-        return createLiteralFilterSchema(detected.meta.value);
-      }
-      return null;
-    default:
-      return null;
-  }
-}
-
-// ============================================================
-// Main API: createFiltersFromSchema
+// Main API
 // ============================================================
 
 /**
- * Creates filter schema entries from a Zod object shape.
- * Use this with the spread operator to add schema-derived filters to a filter group.
+ * Creates a filters schema from a Zod object.
+ * Use with .pick().extend() for clean field selection.
  *
  * @example
- * const filterGroupSchema = z.object({
- *   ...createFiltersFromSchema(child1.pick({ name: true, age: true }).shape),
- *   // Add custom filters
- *   entityId: createStringFilterSchema(),
- * });
- */
-export function createFiltersFromSchema<T extends z.core.$ZodLooseShape>(
-  shape: T
-): { [K in keyof T]: z.ZodOptional<z.ZodTypeAny> } {
-  const result: Record<string, z.ZodOptional<z.ZodTypeAny>> = {};
-
-  for (const [key, schema] of Object.entries(shape)) {
-    const filterSchema = createFilterSchemaForZodType(schema as z.ZodTypeAny);
-    if (filterSchema) {
-      result[key] = filterSchema.optional();
-    }
-  }
-
-  return result as { [K in keyof T]: z.ZodOptional<z.ZodTypeAny> };
-}
-
-/**
- * Creates a complete filter group schema with and/or support from a Zod object shape.
- * Returns the Zod schema with proper TypeScript type inference.
- *
- * @example
- * const filterGroupSchema = createFilterGroupSchema(
- *   child1.pick({ name: true, age: true, type: true }).shape
+ * const filtersSchema = createFiltersSchema(
+ *   child1.pick({ name: true, age: true }).extend({
+ *     entityId: z.string().uuid(),
+ *   })
  * );
  */
-export function createFilterGroupSchema<T extends z.core.$ZodLooseShape>(shape: T) {
-  type FilterGroup = FilterGroupFromShape<T>;
+export function createFiltersSchema<T extends ZodObjectSchema>(schema: T) {
+  const filterGroupSchema = createFilterGroupSchema(schema);
 
-  const filterFields = createFiltersFromSchema(shape);
+  return z.union([
+    z.object({ and: z.array(filterGroupSchema) }),
+    z.object({ or: z.array(filterGroupSchema) }),
+  ]) as z.ZodType<FiltersFromSchema<T>>;
+}
 
-  // Create the filter group schema with recursive and/or
-  const filterGroupSchema: z.ZodType<FilterGroup> = z.lazy(() =>
+/**
+ * Creates a filter group schema from a Zod object.
+ * Includes recursive and/or support.
+ */
+export function createFilterGroupSchema<T extends ZodObjectSchema>(schema: T) {
+  type FilterGroup = FilterGroupFromSchema<T>;
+
+  // Create filter for each field in the schema
+  const filterFields: Record<string, z.ZodType> = {};
+  for (const [key, fieldSchema] of Object.entries(schema.shape)) {
+    filterFields[key] = createFilter(fieldSchema as z.ZodType);
+  }
+
+  const filterGroupSchema = z.lazy(() =>
     z.object({
       ...filterFields,
       and: z.array(filterGroupSchema).optional(),
       or: z.array(filterGroupSchema).optional(),
-    })
+    }),
   ) as z.ZodType<FilterGroup>;
 
   return filterGroupSchema;
 }
 
-/**
- * Creates a complete filters schema (top-level with and/or) from a Zod object shape.
- *
- * @example
- * const filtersSchema = createFiltersSchema(
- *   child1.pick({ name: true, age: true, type: true }).shape
- * );
- * type Filters = z.infer<typeof filtersSchema>;
- */
-export function createFiltersSchema<T extends z.core.$ZodLooseShape>(shape: T) {
-  // type Filters = 
-
-  const filterGroupSchema = createFilterGroupSchema(shape);
-
-  const filtersSchema: z.ZodType<FiltersFromShape<T>> = z.union([
-    z.object({ and: z.array(filterGroupSchema) }),
-    z.object({ or: z.array(filterGroupSchema) }),
-  ])
-
-  return filtersSchema;
-}
-
 // ============================================================
-// Default Filter Schema (for backward compatibility)
+// Default Filter Schema
 // ============================================================
 
-// Define the shape for default filters
-const defaultFilterShape = {
-  ...child1.pick({ name: true, description: true, age: true, verified: true }).shape,
-  entityId: z.string().uuid(),
-  stepId: z.string().uuid(),
-  lastLogin: z.date(),
-  heightCm: z.number(),
-  entityType: z.enum(childrenTypes),
-};
+const defaultFilterSchema = child1
+  .pick({ name: true, description: true, age: true, verified: true })
+  .extend({
+    entityId: z.string().uuid(),
+    stepId: z.string().uuid(),
+    lastLogin: z.date(),
+    heightCm: z.number(),
+    entityType: z.enum(childrenTypes),
+  });
 
-// Create the filter group schema
-export const filterGroupSchema = createFilterGroupSchema(defaultFilterShape);
+export const filterGroupSchema = createFilterGroupSchema(defaultFilterSchema);
+export const filtersSchema = createFiltersSchema(defaultFilterSchema);
 
-// Create the top-level filters schema
-export const filtersSchema = createFiltersSchema(defaultFilterShape);
-
-// Export types
 export type FilterGroup = z.infer<typeof filterGroupSchema>;
 export type Filters = z.infer<typeof filtersSchema>;
 
-// Re-export utilities for custom filter creation
-export {
-  createStringFilterSchema,
-  createNumberFilterSchema,
-  createBooleanFilterSchema,
-  createDateFilterSchema,
-  createEnumFilterSchema,
-  createLiteralFilterSchema,
-};
-
-// Export type utilities for use in other modules
-export type { FilterGroupFromShape, FiltersFromShape, ZodTypeToFilter };
-
 // ============================================================
-// Legacy Types (for backward compatibility with utils.ts)
+// Legacy Types (for utils.ts compatibility)
 // ============================================================
 
-/**
- * Union of all possible filter operators
- */
 export type FilterOperators =
   | "eq"
   | "ne"
@@ -589,15 +332,15 @@ export type FilterOperators =
   | "isExists"
   | "isNotExists";
 
-/**
- * Generic filter type for a single field
- * Used in utils.ts for building SQL conditions
- * Discriminated union that preserves operator-specific value types
- */
+type FilterValue = string | number | boolean | Date;
+
 export type Filter =
-  | { operator: "eq" | "ne"; value: string | number | boolean | Date }
-  | { operator: "contains" | "notContains"; value: string }
-  | { operator: "gt" | "gte" | "lt" | "lte"; value: number | Date }
-  | { operator: "in" | "nin"; value: (string | number | boolean | Date)[] }
+  | { operator: "eq" | "ne"; value: FilterValue }
+  | { operator: "contains" | "notContains"; value: FilterValue }
+  | { operator: "gt" | "gte" | "lt" | "lte"; value: FilterValue }
+  | { operator: "in" | "nin"; value: FilterValue[] }
   | { operator: "isEmpty" | "isNotEmpty" | "isExists" | "isNotExists"; value?: undefined }
   | undefined;
+
+// Export type utilities
+export type { FilterGroupFromSchema, FiltersFromSchema };
