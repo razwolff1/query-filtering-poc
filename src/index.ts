@@ -1,0 +1,13 @@
+import { queryOrders } from "./scripts/singleinhritance/query.js";
+import * as schemas from "./scripts/singleinhritance/schema.js";
+import { stepIds } from "./scripts/singleinhritance/utils.js";
+import { getDb } from "./utils/db.js";
+
+const db = getDb<typeof schemas>(schemas);
+
+const result = await queryOrders({
+  db,
+  stepIds,
+  limit: 10000,
+  filters: { and: [{ name: { operator: "in",value: []} }] },
+});
