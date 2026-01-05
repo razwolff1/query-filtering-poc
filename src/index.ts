@@ -9,5 +9,5 @@ const result = await queryOrders({
   db,
   stepIds,
   limit: 10000,
-  filters: { and: [{ name: { operator: "eq" } }] },
+  filters: { and: [{ name: { operator: "in",value: []} }] },
 });
