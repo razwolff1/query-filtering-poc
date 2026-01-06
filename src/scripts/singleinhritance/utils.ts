@@ -579,7 +579,7 @@ export const getQuery = (db: NodePgDatabase<typeof schemas>, baseQuery: WithSubq
   const relevantTypes = getRelevantTypes(types, whereConditions, filters);
   if (!relevantTypes.length) return undefined;
 
-  const dataCase = sql<Object>`
+  const dataCase = sql<TChildSchema>`
   CASE
     ${sql.join(
       relevantTypes.map((type) => {
